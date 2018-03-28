@@ -1,6 +1,6 @@
-arm64ksyms.o: ../arch/arm64/kernel/arm64ksyms.c \
+arch/arm64/kernel/.tmp_ptrace.o: ../arch/arm64/kernel/ptrace.c \
   ../include/linux/kconfig.h include/generated/autoconf.h \
-  ../include/linux/export.h ../include/linux/sched.h \
+  ../include/linux/audit.h ../include/linux/sched.h \
   ../include/uapi/linux/sched.h ../include/linux/sched/prio.h \
   ../arch/arm64/include/uapi/asm/param.h ../include/asm-generic/param.h \
   ../include/uapi/asm-generic/param.h ../include/linux/capability.h \
@@ -20,9 +20,10 @@ arm64ksyms.o: ../arch/arm64/kernel/arm64ksyms.c \
   ../include/linux/kernel.h \
   /serverhive/purple/los/prebuilts/clang/host/linux-x86/clang-r510928/lib/clang/18/include/stdarg.h \
   ../include/linux/linkage.h ../include/linux/stringify.h \
-  ../arch/arm64/include/asm/linkage.h ../include/linux/bitops.h \
-  ../include/linux/bits.h ../arch/arm64/include/asm/bitops.h \
-  ../arch/arm64/include/asm/barrier.h ../include/asm-generic/barrier.h \
+  ../include/linux/export.h ../arch/arm64/include/asm/linkage.h \
+  ../include/linux/bitops.h ../include/linux/bits.h \
+  ../arch/arm64/include/asm/bitops.h ../arch/arm64/include/asm/barrier.h \
+  ../include/asm-generic/barrier.h \
   ../include/asm-generic/bitops/builtin-__ffs.h \
   ../include/asm-generic/bitops/builtin-ffs.h \
   ../include/asm-generic/bitops/builtin-__fls.h \
@@ -171,43 +172,43 @@ arm64ksyms.o: ../arch/arm64/kernel/arm64ksyms.c \
   ../include/linux/latencytop.h ../include/linux/cred.h \
   ../include/linux/key.h ../include/linux/assoc_array.h \
   ../include/linux/selinux.h ../include/linux/gfp.h \
-  ../include/uapi/linux/magic.h ../include/linux/cryptohash.h \
-  ../include/linux/delay.h arch/arm64/include/generated/asm/delay.h \
-  ../include/asm-generic/delay.h ../include/linux/in6.h \
-  ../include/uapi/linux/in6.h ../include/uapi/linux/libc-compat.h \
-  ../include/linux/syscalls.h ../include/uapi/linux/aio_abi.h \
-  ../include/linux/quota.h ../include/linux/percpu_counter.h \
-  ../include/uapi/linux/dqblk_xfs.h ../include/linux/dqblk_v1.h \
-  ../include/linux/dqblk_v2.h ../include/linux/dqblk_qtree.h \
-  ../include/linux/projid.h ../include/uapi/linux/quota.h \
-  ../include/trace/syscall.h ../include/linux/tracepoint.h \
-  ../include/linux/tracepoint-defs.h ../include/linux/static_key.h \
-  ../include/linux/trace_events.h ../include/linux/ring_buffer.h \
-  ../include/linux/kmemcheck.h ../include/linux/mm.h \
+  ../include/uapi/linux/magic.h ../include/linux/ptrace.h \
+  ../include/linux/pid_namespace.h ../include/linux/mm.h \
   ../include/linux/debug_locks.h ../include/linux/range.h \
   ../include/linux/percpu-refcount.h ../include/linux/bit_spinlock.h \
   ../include/linux/shrinker.h ../include/linux/page_ext.h \
   ../include/linux/stacktrace.h ../include/linux/stackdepot.h \
   ../include/linux/page_ref.h ../include/linux/page-flags.h \
+  ../include/linux/tracepoint-defs.h ../include/linux/static_key.h \
   ../arch/arm64/include/asm/pgtable.h \
   ../arch/arm64/include/asm/proc-fns.h \
   ../arch/arm64/include/asm/pgtable-prot.h \
   ../arch/arm64/include/asm/fixmap.h ../arch/arm64/include/asm/boot.h \
   ../include/asm-generic/fixmap.h ../include/asm-generic/pgtable.h \
   ../include/linux/huge_mm.h ../include/linux/vmstat.h \
-  ../include/linux/vm_event_item.h ../include/linux/seq_file.h \
+  ../include/linux/vm_event_item.h ../include/linux/nsproxy.h \
+  ../include/linux/kref.h ../include/linux/ns_common.h \
+  ../include/uapi/linux/ptrace.h ../include/uapi/linux/audit.h \
+  ../include/uapi/linux/elf-em.h ../arch/arm64/include/asm/syscall.h \
+  ../include/linux/compat.h ../include/linux/stat.h \
+  ../arch/arm64/include/asm/stat.h ../arch/arm64/include/uapi/asm/stat.h \
+  ../include/uapi/asm-generic/stat.h ../arch/arm64/include/asm/compat.h \
+  ../include/uapi/linux/stat.h ../include/linux/socket.h \
+  arch/arm64/include/generated/asm/socket.h \
+  ../include/uapi/asm-generic/socket.h \
+  arch/arm64/include/generated/asm/sockios.h \
+  ../include/uapi/asm-generic/sockios.h ../include/uapi/linux/sockios.h \
+  ../include/linux/uio.h ../include/uapi/linux/uio.h \
+  ../include/uapi/linux/socket.h ../include/uapi/linux/if.h \
+  ../include/uapi/linux/libc-compat.h ../include/uapi/linux/hdlc/ioctl.h \
   ../include/linux/fs.h ../include/linux/kdev_t.h \
   ../include/uapi/linux/kdev_t.h ../include/linux/dcache.h \
   ../include/linux/rculist_bl.h ../include/linux/list_bl.h \
   ../include/linux/lockref.h ../include/linux/stringhash.h \
   ../include/linux/hash.h ../include/linux/path.h \
-  ../include/linux/stat.h ../arch/arm64/include/asm/stat.h \
-  ../arch/arm64/include/uapi/asm/stat.h \
-  ../include/uapi/asm-generic/stat.h ../arch/arm64/include/asm/compat.h \
-  ../include/uapi/linux/stat.h ../include/linux/list_lru.h \
-  ../include/linux/radix-tree.h ../include/linux/semaphore.h \
-  ../include/linux/fcntl.h ../include/uapi/linux/fcntl.h \
-  ../arch/arm64/include/uapi/asm/fcntl.h \
+  ../include/linux/list_lru.h ../include/linux/radix-tree.h \
+  ../include/linux/semaphore.h ../include/linux/fcntl.h \
+  ../include/uapi/linux/fcntl.h ../arch/arm64/include/uapi/asm/fcntl.h \
   ../include/uapi/asm-generic/fcntl.h ../include/uapi/linux/fiemap.h \
   ../include/linux/migrate_mode.h ../include/linux/percpu-rwsem.h \
   ../include/linux/rcu_sync.h ../include/linux/blk_types.h \
@@ -215,42 +216,49 @@ arm64ksyms.o: ../arch/arm64/kernel/arm64ksyms.c \
   ../include/uapi/linux/fs.h ../include/uapi/linux/limits.h \
   ../include/uapi/linux/ioctl.h arch/arm64/include/generated/asm/ioctl.h \
   ../include/asm-generic/ioctl.h ../include/uapi/asm-generic/ioctl.h \
-  ../include/linux/nfs_fs_i.h ../include/linux/poll.h \
-  ../arch/arm64/include/asm/uaccess.h \
-  ../arch/arm64/include/asm/kernel-pgtable.h \
-  ../include/uapi/linux/poll.h arch/arm64/include/generated/asm/poll.h \
-  ../include/uapi/asm-generic/poll.h ../include/linux/trace_seq.h \
-  ../include/linux/seq_buf.h ../include/linux/hardirq.h \
+  ../include/linux/quota.h ../include/linux/percpu_counter.h \
+  ../include/uapi/linux/dqblk_xfs.h ../include/linux/dqblk_v1.h \
+  ../include/linux/dqblk_v2.h ../include/linux/dqblk_qtree.h \
+  ../include/linux/projid.h ../include/uapi/linux/quota.h \
+  ../include/linux/nfs_fs_i.h ../include/uapi/linux/aio_abi.h \
+  ../include/linux/user.h arch/arm64/include/generated/asm/user.h \
+  ../include/asm-generic/user.h ../include/linux/security.h \
+  ../include/linux/slab.h ../include/linux/kmemleak.h \
+  ../include/linux/vmalloc.h ../include/linux/kasan.h \
+  ../include/linux/bio.h ../include/linux/highmem.h \
+  ../include/linux/uaccess.h ../arch/arm64/include/asm/uaccess.h \
+  ../arch/arm64/include/asm/kernel-pgtable.h ../include/linux/hardirq.h \
   ../include/linux/ftrace_irq.h ../include/linux/vtime.h \
   ../include/linux/context_tracking_state.h \
   ../arch/arm64/include/asm/hardirq.h ../arch/arm64/include/asm/irq.h \
   ../include/asm-generic/irq.h ../include/linux/irq_cpustat.h \
-  ../include/linux/perf_event.h ../include/uapi/linux/perf_event.h \
+  ../arch/arm64/include/asm/cacheflush.h \
+  arch/arm64/include/generated/asm/set_memory.h \
+  ../include/asm-generic/set_memory.h \
+  arch/arm64/include/generated/asm/kmap_types.h \
+  ../include/asm-generic/kmap_types.h ../include/linux/mempool.h \
+  ../include/linux/ioprio.h ../include/linux/iocontext.h \
+  ../arch/arm64/include/asm/io.h \
+  arch/arm64/include/generated/asm/early_ioremap.h \
+  ../include/asm-generic/early_ioremap.h ../include/linux/msm_rtb.h \
+  ../include/xen/xen.h ../include/asm-generic/io.h \
+  ../include/asm-generic/pci_iomap.h ../include/linux/perf_event.h \
+  ../include/uapi/linux/perf_event.h \
   ../arch/arm64/include/asm/perf_event.h \
   arch/arm64/include/generated/asm/local64.h \
   ../include/asm-generic/local64.h \
   arch/arm64/include/generated/asm/local.h \
-  ../include/asm-generic/local.h ../include/linux/pid_namespace.h \
-  ../include/linux/nsproxy.h ../include/linux/kref.h \
-  ../include/linux/ns_common.h ../include/linux/ftrace.h \
+  ../include/asm-generic/local.h ../include/linux/ftrace.h \
   ../include/linux/trace_clock.h \
   arch/arm64/include/generated/asm/trace_clock.h \
   ../include/asm-generic/trace_clock.h ../include/linux/kallsyms.h \
-  ../include/linux/ptrace.h ../include/uapi/linux/ptrace.h \
-  ../arch/arm64/include/asm/ftrace.h ../include/linux/compat.h \
-  ../include/linux/socket.h arch/arm64/include/generated/asm/socket.h \
-  ../include/uapi/asm-generic/socket.h \
-  arch/arm64/include/generated/asm/sockios.h \
-  ../include/uapi/asm-generic/sockios.h ../include/uapi/linux/sockios.h \
-  ../include/linux/uio.h ../include/uapi/linux/uio.h \
-  ../include/uapi/linux/socket.h ../include/uapi/linux/if.h \
-  ../include/uapi/linux/hdlc/ioctl.h ../include/linux/cpu.h \
+  ../arch/arm64/include/asm/ftrace.h ../include/linux/cpu.h \
   ../include/linux/node.h ../include/linux/device.h \
   ../include/linux/ioport.h ../include/linux/kobject.h \
   ../include/linux/sysfs.h ../include/linux/kernfs.h \
   ../include/linux/idr.h ../include/linux/kobject_ns.h \
   ../include/linux/klist.h ../include/linux/pinctrl/devinfo.h \
-  ../include/linux/pinctrl/consumer.h \
+  ../include/linux/pinctrl/consumer.h ../include/linux/seq_file.h \
   ../include/linux/pinctrl/pinctrl-state.h ../include/linux/pm.h \
   ../include/linux/ratelimit.h ../arch/arm64/include/asm/device.h \
   ../include/linux/pm_wakeup.h ../include/linux/cpuhotplug.h \
@@ -265,15 +273,26 @@ arm64ksyms.o: ../arch/arm64/kernel/arm64ksyms.c \
   ../include/linux/rbtree_latch.h ../include/linux/u64_stats_sync.h \
   ../include/linux/bpf_types.h ../include/linux/psi_types.h \
   ../include/linux/kthread.h ../include/linux/cgroup_subsys.h \
-  ../include/linux/coresight-stm.h ../include/linux/stm.h \
-  ../include/uapi/linux/coresight-stm.h ../include/linux/uaccess.h \
-  ../include/linux/io.h ../arch/arm64/include/asm/io.h \
-  arch/arm64/include/generated/asm/early_ioremap.h \
-  ../include/asm-generic/early_ioremap.h ../include/linux/msm_rtb.h \
-  ../include/xen/xen.h ../include/asm-generic/io.h \
-  ../include/asm-generic/pci_iomap.h ../include/linux/vmalloc.h \
-  ../include/linux/arm-smccc.h ../include/linux/kprobes.h \
-  ../arch/arm64/include/asm/cacheflush.h \
-  arch/arm64/include/generated/asm/set_memory.h \
-  ../include/asm-generic/set_memory.h \
-  ../arch/arm64/include/asm/checksum.h ../include/asm-generic/checksum.h
+  ../include/linux/hw_breakpoint.h ../include/uapi/linux/hw_breakpoint.h \
+  ../include/linux/regset.h ../include/linux/tracehook.h \
+  ../include/linux/task_work.h ../include/linux/memcontrol.h \
+  ../include/linux/page_counter.h ../include/linux/vmpressure.h \
+  ../include/linux/eventfd.h ../include/linux/writeback.h \
+  ../include/linux/flex_proportions.h \
+  ../include/linux/backing-dev-defs.h ../include/linux/elf.h \
+  ../arch/arm64/include/asm/elf.h ../include/uapi/linux/elf.h \
+  ../arch/arm64/include/asm/debug-monitors.h \
+  ../arch/arm64/include/asm/esr.h ../arch/arm64/include/asm/traps.h \
+  ../arch/arm64/include/asm/system_misc.h ../include/linux/reboot.h \
+  ../include/uapi/linux/reboot.h \
+  arch/arm64/include/generated/asm/emergency-restart.h \
+  ../include/asm-generic/emergency-restart.h \
+  ../include/trace/events/syscalls.h ../include/linux/tracepoint.h \
+  ../include/trace/define_trace.h ../include/trace/trace_events.h \
+  ../include/linux/trace_events.h ../include/linux/ring_buffer.h \
+  ../include/linux/kmemcheck.h ../include/linux/poll.h \
+  ../include/uapi/linux/poll.h arch/arm64/include/generated/asm/poll.h \
+  ../include/uapi/asm-generic/poll.h ../include/linux/trace_seq.h \
+  ../include/linux/seq_buf.h ../include/linux/coresight-stm.h \
+  ../include/linux/stm.h ../include/uapi/linux/coresight-stm.h \
+  ../include/trace/perf.h ../include/trace/bpf_probe.h

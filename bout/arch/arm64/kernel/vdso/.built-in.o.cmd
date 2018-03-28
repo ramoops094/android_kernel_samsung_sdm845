@@ -1,0 +1,1 @@
+cmd_arch/arm64/kernel/vdso/built-in.o :=  /serverhive/purple/los/prebuilts/clang/host/linux-x86/clang-r510928/bin/ld.lld -EL  -maarch64elf  -r -o arch/arm64/kernel/vdso/built-in.o arch/arm64/kernel/vdso/vdso.o 
