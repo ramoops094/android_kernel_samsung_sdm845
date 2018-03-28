@@ -172,10 +172,10 @@
 #endif
 
 #ifdef CONFIG_BPF_EVENTS
-#define BPF_RAW_TP() STRUCT_ALIGN();					\
-			 VMLINUX_SYMBOL(__start__bpf_raw_tp) = .;	\
-			 KEEP(*(__bpf_raw_tp_map))			\
-			 VMLINUX_SYMBOL(__stop__bpf_raw_tp) = .;
+#define BPF_RAW_TP() STRUCT_ALIGN();                                   \
+ 			VMLINUX_SYMBOL(__start__bpf_raw_tp) = .;       \
+ 			KEEP(*(__bpf_raw_tp_map))                      \
+ 			VMLINUX_SYMBOL(__stop__bpf_raw_tp) = .;
 #else
 #define BPF_RAW_TP()
 #endif
@@ -247,7 +247,7 @@
 	LIKELY_PROFILE()		       				\
 	BRANCH_PROFILE()						\
 	TRACE_PRINTKS()							\
-	BPF_RAW_TP()							\
+	BPF_RAW_TP()                                                    \
 	TRACEPOINT_STR()
 
 /*
@@ -299,6 +299,7 @@
 	.rodata           : AT(ADDR(.rodata) - LOAD_OFFSET) {		\
 		VMLINUX_SYMBOL(__start_rodata) = .;			\
 		*(.rodata) *(.rodata.*)					\
+		RO_AFTER_INIT_DATA	/* Read only after init */	\
 		*(__vermagic)		/* Kernel version magic */	\
 		. = ALIGN(8);						\
 		VMLINUX_SYMBOL(__start___tracepoints_ptrs) = .;		\
@@ -309,7 +310,6 @@
 									\
 	.rodata1          : AT(ADDR(.rodata1) - LOAD_OFFSET) {		\
 		*(.rodata1)						\
-		RO_AFTER_INIT_DATA	/* Read only after init */	\
 	}								\
 									\
 	BUG_TABLE							\
@@ -470,17 +470,19 @@
  * code elimination is enabled, so these sections should be converted
  * to use ".." first.
  */
-#define TEXT_TEXT                                                       \
-	        ALIGN_FUNCTION();                                       \
-	        *(.text.hot .text.hot.*)                                \
-	        *(TEXT_MAIN .text.fixup)                                \
-	        *(.text.unlikely .text.unlikely.*)                      \
-	        *(.text.unknown .text.unknown.*)                        \
-	        *(.text..ftrace)                                        \
-	        *(TEXT_CFI_MAIN)                                        \
-	        *(.ref.text)                                            \
-        MEM_KEEP(init.text)                                             \
-        MEM_KEEP(exit.text)
+#define TEXT_TEXT							\
+		ALIGN_FUNCTION();					\
+		*(.text.hot .text.hot.*)				\
+		*(TEXT_MAIN .text.fixup)				\
+		*(.text.unlikely .text.unlikely.*)			\
+		*(.text.unknown .text.unknown.*)			\
+		*(.text..ftrace)					\
+		*(TEXT_CFI_MAIN) 					\
+		*(.ref.text)						\
+		*(.text.asan.* .text.tsan.*)				\
+	MEM_KEEP(init.text)						\
+	MEM_KEEP(exit.text)						\
+
 
 /* sched.text is aling to function alignment to secure we have same
  * address even at second ld pass when generating System.map */
@@ -724,30 +726,6 @@
 		KEEP(*(.initcall##level##.init))			\
 		KEEP(*(.initcall##level##s.init))			\
 
-#ifdef CONFIG_DEFERRED_INITCALLS
-#define DEFERRED_INITCALLS(level)					\
-		VMLINUX_SYMBOL(__deferred_initcall_start) = .;		\
-		KEEP(*(.deferred_initcall##level##.init))		\
-		KEEP(*(.deferred_initcall##level##s.init))		\
-		VMLINUX_SYMBOL(__deferred_initcall_end) = .;
-#endif
-
-#ifdef CONFIG_DEFERRED_INITCALLS
-#define INIT_CALLS							\
-		VMLINUX_SYMBOL(__initcall_start) = .;			\
-		KEEP(*(.initcallearly.init))				\
-		INIT_CALLS_LEVEL(0)					\
-		INIT_CALLS_LEVEL(1)					\
-		INIT_CALLS_LEVEL(2)					\
-		INIT_CALLS_LEVEL(3)					\
-		INIT_CALLS_LEVEL(4)					\
-		INIT_CALLS_LEVEL(5)					\
-		INIT_CALLS_LEVEL(rootfs)				\
-		INIT_CALLS_LEVEL(6)					\
-		INIT_CALLS_LEVEL(7)					\
-		VMLINUX_SYMBOL(__initcall_end) = .;			\
-		DEFERRED_INITCALLS(0)
-#else
 #define INIT_CALLS							\
 		VMLINUX_SYMBOL(__initcall_start) = .;			\
 		KEEP(*(.initcallearly.init))				\
@@ -761,7 +739,6 @@
 		INIT_CALLS_LEVEL(6)					\
 		INIT_CALLS_LEVEL(7)					\
 		VMLINUX_SYMBOL(__initcall_end) = .;
-#endif
 
 #define CON_INITCALL							\
 		VMLINUX_SYMBOL(__con_initcall_start) = .;		\
