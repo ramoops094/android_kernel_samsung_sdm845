@@ -551,6 +551,8 @@ static bool __bpf_offload_dev_match(struct bpf_prog *prog,
 
 	if (!bpf_prog_is_dev_bound(prog->aux))
 		return false;
+	if (!bpf_map_is_dev_bound(map))
+		return bpf_map_offload_neutral(map);
 
 	offload = prog->aux->offload;
 	if (!offload)
