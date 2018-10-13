@@ -111,6 +111,7 @@ struct netns_ipv4 {
 	int sysctl_tcp_retries2;
 	int sysctl_tcp_orphan_retries;
 	int sysctl_tcp_fin_timeout;
+	int sysctl_tcp_default_init_rwnd;
 	unsigned int sysctl_tcp_notsent_lowat;
 
 	int sysctl_igmp_max_memberships;
