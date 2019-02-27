@@ -1170,4 +1170,10 @@ struct bpf_sysctl_kern {
 	int write;
 };
 
+struct bpf_sysctl_kern {
+	struct ctl_table_header *head;
+	struct ctl_table *table;
+	int write;
+};
+
 #endif /* __LINUX_FILTER_H__ */
