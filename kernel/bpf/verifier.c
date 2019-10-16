@@ -3072,41 +3072,6 @@ static int check_ptr_to_btf_access(struct bpf_verifier_env *env,
 	return 0;
 }
 
-static bool bpf_map_is_rdonly(const struct bpf_map *map)
-{
-	return (map->map_flags & BPF_F_RDONLY_PROG) && map->frozen;
-}
-
-static int bpf_map_direct_read(struct bpf_map *map, int off, int size, u64 *val)
-{
-	void *ptr;
-	u64 addr;
-	int err;
-
-	err = map->ops->map_direct_value_addr(map, &addr, off);
-	if (err)
-		return err;
-	ptr = (void *)addr + off;
-
-	switch (size) {
-	case sizeof(u8):
-		*val = (u64)*(u8 *)ptr;
-		break;
-	case sizeof(u16):
-		*val = (u64)*(u16 *)ptr;
-		break;
-	case sizeof(u32):
-		*val = (u64)*(u32 *)ptr;
-		break;
-	case sizeof(u64):
-		*val = *(u64 *)ptr;
-		break;
-	default:
-		return -EINVAL;
-	}
-	return 0;
-}
-
 /* check whether memory at (regno + off) is accessible for t = (read | write)
  * if t==write, value_regno is a register which value is stored into memory
  * if t==read, value_regno is a register which will receive the value from memory
@@ -5625,36 +5590,6 @@ static int adjust_scalar_min_max_vals(struct bpf_verifier_env *env,
 			scalar32_min_max_arsh(dst_reg, &src_reg);
 		else
 			scalar_min_max_arsh(dst_reg, &src_reg);
-		break;
-	case BPF_ARSH:
-		if (umax_val >= insn_bitness) {
-			/* Shifts greater than 31 or 63 are undefined.
-			 * This includes shifts by a negative number.
-			 */
-			mark_reg_unknown(env, regs, insn->dst_reg);
-			break;
-		}
-
-		/* Upon reaching here, src_known is true and
-		 * umax_val is equal to umin_val.
-		 */
-		if (insn_bitness == 32) {
-			dst_reg->smin_value = (u32)(((s32)dst_reg->smin_value) >> umin_val);
-			dst_reg->smax_value = (u32)(((s32)dst_reg->smax_value) >> umin_val);
-		} else {
-			dst_reg->smin_value >>= umin_val;
-			dst_reg->smax_value >>= umin_val;
-		}
-
-		dst_reg->var_off = tnum_arshift(dst_reg->var_off, umin_val,
-						insn_bitness);
-
-		/* blow away the dst_reg umin_value/umax_value and rely on
-		 * dst_reg var_off to refine the result.
-		 */
-		dst_reg->umin_value = 0;
-		dst_reg->umax_value = U64_MAX;
-		__update_reg_bounds(dst_reg);
 		break;
 	default:
 		mark_reg_unknown(env, regs, insn->dst_reg);
