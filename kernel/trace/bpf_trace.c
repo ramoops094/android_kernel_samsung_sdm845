@@ -906,8 +906,6 @@ static const struct bpf_func_proto *raw_tp_prog_func_proto(enum bpf_func_id func
  	switch (func_id) {
  	case BPF_FUNC_perf_event_output:
  		return &bpf_perf_event_output_proto_raw_tp;
-	case BPF_FUNC_skb_output:
-		return &bpf_skb_output_proto;
  	case BPF_FUNC_get_stackid:
  		return &bpf_get_stackid_proto_raw_tp;
  	default:
@@ -953,8 +951,6 @@ static bool tracing_prog_is_valid_access(int off, int size,
  		return false;
  	if (off % size != 0)
  		return false;
-	if (!prog->aux->attach_btf_id)
-		return true;
 	return btf_ctx_access(off, size, type, prog, info);
 }
 
