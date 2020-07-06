@@ -89,7 +89,6 @@
 #include <linux/netfilter_ipv4.h>
 #include <linux/random.h>
 #include <linux/slab.h>
-#include <linux/netfilter/xt_qtaguid.h>
 
 #include <asm/uaccess.h>
 
@@ -157,7 +156,7 @@ void inet_sock_destruct(struct sock *sk)
 
 	if (sk->sk_type == SOCK_STREAM && sk->sk_state != TCP_CLOSE) {
 		pr_err("Attempt to release TCP socket in state %d %p\n",
-			   sk->sk_state, sk);
+		       sk->sk_state, sk);
 		return;
 	}
 	if (!sock_flag(sk, SOCK_DEAD)) {
@@ -234,8 +233,8 @@ int inet_listen(struct socket *sock, int backlog)
 		 * was shutdown() rather than close().
 		 */
 		if ((sysctl_tcp_fastopen & TFO_SERVER_WO_SOCKOPT1) &&
-			(sysctl_tcp_fastopen & TFO_SERVER_ENABLE) &&
-			!inet_csk(sk)->icsk_accept_queue.fastopenq.max_qlen) {
+		    (sysctl_tcp_fastopen & TFO_SERVER_ENABLE) &&
+		    !inet_csk(sk)->icsk_accept_queue.fastopenq.max_qlen) {
 			fastopen_queue_tune(sk, backlog);
 			tcp_fastopen_init_key_once(true);
 		}
@@ -258,7 +257,7 @@ EXPORT_SYMBOL(inet_listen);
  */
 
 static int inet_create(struct net *net, struct socket *sock, int protocol,
-			   int kern)
+		       int kern)
 {
 	struct sock *sk;
 	struct inet_protosw *answer;
@@ -308,14 +307,14 @@ lookup_protocol:
 			 */
 			if (++try_loading_module == 1)
 				request_module("net-pf-%d-proto-%d-type-%d",
-						   PF_INET, protocol, sock->type);
+					       PF_INET, protocol, sock->type);
 			/*
 			 * Fall back to generic, e.g. net-pf-2-proto-132
 			 * (net-pf-PF_INET-proto-IPPROTO_SCTP)
 			 */
 			else
 				request_module("net-pf-%d-proto-%d",
-						   PF_INET, protocol);
+					       PF_INET, protocol);
 			goto lookup_protocol;
 		} else
 			goto out_rcu_unlock;
@@ -412,6 +411,7 @@ out_rcu_unlock:
 	goto out;
 }
 
+
 /*
  *	The peer socket should always be NULL (or else). When we call this
  *	function we are destroying the object and from then on nobody
@@ -423,10 +423,10 @@ int inet_release(struct socket *sock)
 
 	if (sk) {
 		long timeout;
-		
-#ifdef CONFIG_NETFILTER_XT_MATCH_QTAGUID
-		qtaguid_untag(sock, true);
-#endif
+
+		if (!sk->sk_kern_sock)
+			BPF_CGROUP_RUN_PROG_INET_SOCK_RELEASE(sk);
+
 		/* Applications forget to leave groups before exiting */
 		ip_mc_drop_socket(sk);
 
@@ -439,7 +439,7 @@ int inet_release(struct socket *sock)
 		 */
 		timeout = 0;
 		if (sock_flag(sk, SOCK_LINGER) &&
-			!(current->flags & PF_EXITING))
+		    !(current->flags & PF_EXITING))
 			timeout = sk->sk_lingertime;
 		sock->sk = NULL;
 		sk->sk_prot->close(sk, timeout);
@@ -488,7 +488,7 @@ int __inet_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len,
 		 */
 		err = -EAFNOSUPPORT;
 		if (addr->sin_family != AF_UNSPEC ||
-			addr->sin_addr.s_addr != htonl(INADDR_ANY))
+		    addr->sin_addr.s_addr != htonl(INADDR_ANY))
 			goto out;
 	}
 
@@ -504,17 +504,17 @@ int __inet_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len,
 	 */
 	err = -EADDRNOTAVAIL;
 	if (!net->ipv4.sysctl_ip_nonlocal_bind &&
-		!(inet->freebind || inet->transparent) &&
-		addr->sin_addr.s_addr != htonl(INADDR_ANY) &&
-		chk_addr_ret != RTN_LOCAL &&
-		chk_addr_ret != RTN_MULTICAST &&
-		chk_addr_ret != RTN_BROADCAST)
+	    !(inet->freebind || inet->transparent) &&
+	    addr->sin_addr.s_addr != htonl(INADDR_ANY) &&
+	    chk_addr_ret != RTN_LOCAL &&
+	    chk_addr_ret != RTN_MULTICAST &&
+	    chk_addr_ret != RTN_BROADCAST)
 		goto out;
 
 	snum = ntohs(addr->sin_port);
 	err = -EACCES;
 	if (snum && snum < PROT_SOCK &&
-		!ns_capable(net->user_ns, CAP_NET_BIND_SERVICE))
+	    !ns_capable(net->user_ns, CAP_NET_BIND_SERVICE))
 		goto out;
 
 	/*      We keep a pair of addresses. rcv_saddr is the one
@@ -568,7 +568,7 @@ out:
 }
 
 int inet_dgram_connect(struct socket *sock, struct sockaddr *uaddr,
-			   int addr_len, int flags)
+		       int addr_len, int flags)
 {
 	struct sock *sk = sock->sk;
 	int err;
@@ -785,8 +785,8 @@ int inet_getname(struct socket *sock, struct sockaddr *uaddr,
 	sin->sin_family = AF_INET;
 	if (peer) {
 		if (!inet->inet_dport ||
-			(((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_SYN_SENT)) &&
-			 peer == 1))
+		    (((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_SYN_SENT)) &&
+		     peer == 1))
 			return -ENOTCONN;
 		sin->sin_port = inet->inet_dport;
 		sin->sin_addr.s_addr = inet->inet_daddr;
@@ -806,23 +806,20 @@ EXPORT_SYMBOL(inet_getname);
 int inet_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 {
 	struct sock *sk = sock->sk;
-	int err;
 
 	sock_rps_record_flow(sk);
 
 	/* We may need to bind the socket. */
 	if (!inet_sk(sk)->inet_num && !sk->sk_prot->no_autobind &&
-		inet_autobind(sk))
+	    inet_autobind(sk))
 		return -EAGAIN;
 
-	err = sk->sk_prot->sendmsg(sk, msg, size);
-
-	return err;
+	return sk->sk_prot->sendmsg(sk, msg, size);
 }
 EXPORT_SYMBOL(inet_sendmsg);
 
 ssize_t inet_sendpage(struct socket *sock, struct page *page, int offset,
-		size_t size, int flags)
+		      size_t size, int flags)
 {
 	struct sock *sk = sock->sk;
 
@@ -830,7 +827,7 @@ ssize_t inet_sendpage(struct socket *sock, struct page *page, int offset,
 
 	/* We may need to bind the socket. */
 	if (!inet_sk(sk)->inet_num && !sk->sk_prot->no_autobind &&
-		inet_autobind(sk))
+	    inet_autobind(sk))
 		return -EAGAIN;
 
 	if (sk->sk_prot->sendpage)
@@ -850,9 +847,8 @@ int inet_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 
 	err = sk->sk_prot->recvmsg(sk, msg, size, flags & MSG_DONTWAIT,
 				   flags & ~MSG_DONTWAIT, &addr_len);
-	if (err >= 0) {
+	if (err >= 0)
 		msg->msg_namelen = addr_len;
-	}
 	return err;
 }
 EXPORT_SYMBOL(inet_recvmsg);
@@ -866,15 +862,15 @@ int inet_shutdown(struct socket *sock, int how)
 	 * the socket is a TCP socket. (WHY AC...)
 	 */
 	how++; /* maps 0->1 has the advantage of making bit 1 rcvs and
-			   1->2 bit 2 snds.
-			   2->3 */
+		       1->2 bit 2 snds.
+		       2->3 */
 	if ((how & ~SHUTDOWN_MASK) || !how)	/* MAXINT->0 */
 		return -EINVAL;
 
 	lock_sock(sk);
 	if (sock->state == SS_CONNECTING) {
 		if ((1 << sk->sk_state) &
-			(TCPF_SYN_SENT | TCPF_SYN_RECV | TCPF_CLOSE))
+		    (TCPF_SYN_SENT | TCPF_SYN_RECV | TCPF_CLOSE))
 			sock->state = SS_DISCONNECTING;
 		else
 			sock->state = SS_CONNECTED;
@@ -1089,7 +1085,7 @@ static struct inet_protosw inetsw_array[] =
 		.prot =       &tcp_prot,
 		.ops =        &inet_stream_ops,
 		.flags =      INET_PROTOSW_PERMANENT |
-				  INET_PROTOSW_ICSK,
+			      INET_PROTOSW_ICSK,
 	},
 
 	{
@@ -1098,23 +1094,23 @@ static struct inet_protosw inetsw_array[] =
 		.prot =       &udp_prot,
 		.ops =        &inet_dgram_ops,
 		.flags =      INET_PROTOSW_PERMANENT,
-	   },
+       },
 
-	   {
+       {
 		.type =       SOCK_DGRAM,
 		.protocol =   IPPROTO_ICMP,
 		.prot =       &ping_prot,
 		.ops =        &inet_sockraw_ops,
 		.flags =      INET_PROTOSW_REUSE,
-	   },
+       },
 
-	   {
-		   .type =       SOCK_RAW,
-		   .protocol =   IPPROTO_IP,	/* wild card */
-		   .prot =       &raw_prot,
-		   .ops =        &inet_sockraw_ops,
-		   .flags =      INET_PROTOSW_REUSE,
-	   }
+       {
+	       .type =       SOCK_RAW,
+	       .protocol =   IPPROTO_IP,	/* wild card */
+	       .prot =       &raw_prot,
+	       .ops =        &inet_sockraw_ops,
+	       .flags =      INET_PROTOSW_REUSE,
+       }
 };
 
 #define INETSW_ARRAY_LEN ARRAY_SIZE(inetsw_array)
@@ -1161,7 +1157,7 @@ out_permanent:
 
 out_illegal:
 	pr_err("Ignoring attempt to register invalid socket type %d\n",
-		   p->type);
+	       p->type);
 	goto out;
 }
 EXPORT_SYMBOL(inet_register_protosw);
@@ -1170,7 +1166,7 @@ void inet_unregister_protosw(struct inet_protosw *p)
 {
 	if (INET_PROTOSW_PERMANENT & p->flags) {
 		pr_err("Attempt to unregister permanent protocol %d\n",
-			   p->protocol);
+		       p->protocol);
 	} else {
 		spin_lock_bh(&inetsw_lock);
 		list_del_rcu(&p->list);
@@ -1192,15 +1188,15 @@ static int inet_sk_reselect_saddr(struct sock *sk)
 	struct ip_options_rcu *inet_opt;
 
 	inet_opt = rcu_dereference_protected(inet->inet_opt,
-						 lockdep_sock_is_held(sk));
+					     lockdep_sock_is_held(sk));
 	if (inet_opt && inet_opt->opt.srr)
 		daddr = inet_opt->opt.faddr;
 
 	/* Query new route. */
 	fl4 = &inet->cork.fl.u.ip4;
 	rt = ip_route_connect(fl4, daddr, 0, RT_CONN_FLAGS(sk),
-				  sk->sk_bound_dev_if, sk->sk_protocol,
-				  inet->inet_sport, inet->inet_dport, sk);
+			      sk->sk_bound_dev_if, sk->sk_protocol,
+			      inet->inet_sport, inet->inet_dport, sk);
 	if (IS_ERR(rt))
 		return PTR_ERR(rt);
 
@@ -1266,7 +1262,6 @@ int inet_sk_rebuild_header(struct sock *sk)
 		 * Other protocols have to map its equivalent state to TCP_SYN_SENT.
 		 * DCCP maps its DCCP_REQUESTING state to TCP_SYN_SENT. -acme
 		 */
-
 		if (!READ_ONCE(sock_net(sk)->ipv4.sysctl_ip_dynaddr) ||
 		    sk->sk_state != TCP_SYN_SENT ||
 		    (sk->sk_userlocks & SOCK_BINDADDR_LOCK) ||
@@ -1429,8 +1424,8 @@ struct sk_buff **inet_gro_receive(struct sk_buff **head, struct sk_buff *skb)
 		 * at the same offset.
 		 */
 		if ((iph->protocol ^ iph2->protocol) |
-			((__force u32)iph->saddr ^ (__force u32)iph2->saddr) |
-			((__force u32)iph->daddr ^ (__force u32)iph2->daddr)) {
+		    ((__force u32)iph->saddr ^ (__force u32)iph2->saddr) |
+		    ((__force u32)iph->daddr ^ (__force u32)iph2->daddr)) {
 			NAPI_GRO_CB(p)->same_flow = 0;
 			continue;
 		}
@@ -1707,7 +1702,7 @@ static __net_init int ipv4_mib_init_net(struct net *net)
 	if (!net->mib.icmp_statistics)
 		goto err_icmp_mib;
 	net->mib.icmpmsg_statistics = kzalloc(sizeof(struct icmpmsg_mib),
-						  GFP_KERNEL);
+					      GFP_KERNEL);
 	if (!net->mib.icmpmsg_statistics)
 		goto err_icmpmsg_mib;
 
