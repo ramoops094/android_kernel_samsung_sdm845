@@ -75,9 +75,6 @@
 #include <linux/ipsec.h>
 #include <asm/unaligned.h>
 #include <linux/errqueue.h>
-#ifdef CONFIG_NETPM
-#include <linux/inetdevice.h>
-#endif
 
 int sysctl_tcp_timestamps __read_mostly = 1;
 int sysctl_tcp_window_scaling __read_mostly = 1;
@@ -104,10 +101,6 @@ int sysctl_tcp_moderate_rcvbuf __read_mostly = 1;
 int sysctl_tcp_early_retrans __read_mostly = 3;
 int sysctl_tcp_invalid_ratelimit __read_mostly = HZ/2;
 int sysctl_tcp_default_init_rwnd __read_mostly = TCP_INIT_CWND * 2;
-
-#ifdef CONFIG_NETPM
-int sysctl_tcp_netpm[4] __read_mostly;	/* Timestamp, RAT, PHY status, Access TP */
-#endif
 
 #define FLAG_DATA		0x01 /* Incoming frame contained data.		*/
 #define FLAG_WIN_UPDATE		0x02 /* Incoming ACK was a window update.	*/
@@ -136,138 +129,6 @@ int sysctl_tcp_netpm[4] __read_mostly;	/* Timestamp, RAT, PHY status, Access TP 
 #define REXMIT_NONE	0 /* no loss recovery to do */
 #define REXMIT_LOST	1 /* retransmit packets marked lost */
 #define REXMIT_NEW	2 /* FRTO-style transmit of unsent/new packets */
-
-#ifdef CONFIG_NETPM
-static int netpm_int_log2(u32);
-static int netpm_pow(int, int);
-static int netpm_piecelinear_logbdp(struct tcp_sock *);
-
-#define NETPM_DEF_ENABLE 1
-#define NETPM_DEF_UB max_t(int, sysctl_tcp_rmem[2], 8388608)
-#define NETPM_DEF_LB 4194304
-#define NETPM_DEF_SRTT_SCALE 10 // it should be equal or larger than 1
-#define NETPM_DEF_PA 600000
-#define NETPM_DEF_PB 17
-#define NETPM_DEF_INC 0
-#define NETPM_DEF_INC_TH 1
-#define NETPM_DEF_DEC 0
-#define NETPM_DEF_DEC_TH 3
-#define NETPM_DEF_MP 150
-#define NETPM_DEF_GAIN 188
-#define NETPM_RTT_MIN_INITIAL_VAL 86400000
-
-static const s8 NetpmLogTable[256] = {
-	-1, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
-	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-	6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-	6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-	6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
-};
-
-#ifdef SAMSUNG_NETPM_DEBUG
-#define netpm_debug(format, ...) pr_debug("<netpm> "format, __VA_ARGS__)
-#else
-#define netpm_debug(format, ...) do {} while (0)
-#endif
-
-static inline bool netpm(struct tcp_sock *tp)
-{
-	return NETPM_DEF_ENABLE && (sysctl_tcp_netpm[1] == 0x04) &&
-		(sysctl_tcp_netpm[2] == 0x01) && (tp->netpm_netif == 1);
-}
-
-static inline int netpm_rmem_max(struct tcp_sock *tp)
-{
-	if (netpm(tp))
-		return tp->netpm_tcp_rmem_max;
-
-	return sysctl_tcp_rmem[2];
-}
-
-static struct net_device *netpm_dev_find(struct sock *sk)
-{
-	struct net_device *dev = NULL;
-
-	if (!sk)
-		goto outdev_out;
-
-	if (sk->sk_family == AF_INET) {
-		struct rtable *rt = (struct rtable *)__sk_dst_check(sk, 0);
-
-		if (rt)
-			dev = rt->dst.dev;
-
-		if (!dev) {
-			struct inet_sock *inet = inet_sk(sk);
-
-			dev = __ip_dev_find(sock_net(sk), inet->inet_saddr, false);
-		}
-	} else if (sk->sk_family == AF_INET6) {
-		struct ipv6_pinfo *np = inet6_sk(sk);
-		struct rtable *rt = (struct rtable *)__sk_dst_check(sk,
-				np->dst_cookie);
-
-		if (rt)
-			dev = rt->dst.dev;
-
-		if (!dev)
-			dev = ip6_dev_find(sock_net(sk), &np->saddr);
-	}
-outdev_out:
-	return dev;
-}
-
-static void netpm_init_buffer_space(struct sock *sk)
-{
-	struct tcp_sock *tp = tcp_sk(sk);
-	struct net_device *dev_out = netpm_dev_find(sk);
-
-	if (!NETPM_DEF_ENABLE || !dev_out)
-		return;
-
-	if (dev_out->netpm_use) {
-		tp->netpm_netif = 1;
-
-		/* Initialization for NETPM */
-		tp->netpm_rtt_min = NETPM_RTT_MIN_INITIAL_VAL;
-		tp->netpm_max_tput = 0;
-		tp->netpm_srtt = 0;
-		tp->netpm_rttvar = 0;
-		tp->netpm_cwnd_est = 0;
-		tp->netpm_tcp_rmem_max_base = sysctl_tcp_rmem[2];
-		tp->netpm_tcp_rmem_max = sysctl_tcp_rmem[2];
-		tp->netpm_rwnd_max_adjust = 0;
-		tp->netpm_rbuf_flag = 0;
-
-		tp->netpm_rmem_max_curbdp[0] = -1;
-		tp->netpm_rmem_max_curbdp[1] = -1;
-	} else {
-		tp->netpm_netif = 0;
-	}
-}
-
-static inline u32 netpm_rtt_avg(struct tcp_sock *tp)
-{
-	return tp->netpm_srtt >> NETPM_DEF_SRTT_SCALE;
-}
-
-static inline u32 netpm_rttvar_avg(struct tcp_sock *tp)
-{
-	return tp->netpm_rttvar >> (NETPM_DEF_SRTT_SCALE - 1);
-}
-#endif
-
 
 static void tcp_gro_dev_warn(struct sock *sk, const struct sk_buff *skb,
 			     unsigned int len)
@@ -518,11 +379,7 @@ static int __tcp_grow_window(const struct sock *sk, const struct sk_buff *skb)
 	struct tcp_sock *tp = tcp_sk(sk);
 	/* Optimize this! */
 	int truesize = tcp_win_from_space(skb->truesize) >> 1;
-#ifdef CONFIG_NETPM
-	int window = tcp_win_from_space(netpm_rmem_max(tp)) >> 1;
-#else
 	int window = tcp_win_from_space(sysctl_tcp_rmem[2]) >> 1;
-#endif
 
 	while (tp->rcv_ssthresh <= window) {
 		if (truesize <= skb->len)
@@ -577,11 +434,7 @@ static void tcp_fixup_rcvbuf(struct sock *sk)
 		rcvmem <<= 2;
 
 	if (sk->sk_rcvbuf < rcvmem)
-#ifdef CONFIG_NETPM
-		sk->sk_rcvbuf = min(rcvmem, netpm_rmem_max(tcp_sk(sk)));
-#else
 		sk->sk_rcvbuf = min(rcvmem, sysctl_tcp_rmem[2]);
-#endif
 }
 
 /* 4. Try to fixup all. It is made immediately after connection enters
@@ -591,10 +444,6 @@ void tcp_init_buffer_space(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	int maxwin;
-
-#ifdef CONFIG_NETPM
-	netpm_init_buffer_space(sk);
-#endif
 
 	if (!(sk->sk_userlocks & SOCK_RCVBUF_LOCK))
 		tcp_fixup_rcvbuf(sk);
@@ -634,15 +483,6 @@ static void tcp_clamp_window(struct sock *sk)
 
 	icsk->icsk_ack.quick = 0;
 
-#ifdef CONFIG_NETPM
-	if (sk->sk_rcvbuf < netpm_rmem_max(tp) &&
-	    !(sk->sk_userlocks & SOCK_RCVBUF_LOCK) &&
-	    !tcp_under_memory_pressure(sk) &&
-	    sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)) {
-		sk->sk_rcvbuf = min(atomic_read(&sk->sk_rmem_alloc),
-				    netpm_rmem_max(tp));
-	}
-#else
 	if (sk->sk_rcvbuf < sysctl_tcp_rmem[2] &&
 	    !(sk->sk_userlocks & SOCK_RCVBUF_LOCK) &&
 	    !tcp_under_memory_pressure(sk) &&
@@ -650,7 +490,6 @@ static void tcp_clamp_window(struct sock *sk)
 		sk->sk_rcvbuf = min(atomic_read(&sk->sk_rmem_alloc),
 				    sysctl_tcp_rmem[2]);
 	}
-#endif
 	if (atomic_read(&sk->sk_rmem_alloc) > sk->sk_rcvbuf)
 		tp->rcv_ssthresh = min(tp->window_clamp, 2U * tp->advmss);
 }
@@ -674,44 +513,6 @@ void tcp_initialize_rcv_mss(struct sock *sk)
 	inet_csk(sk)->icsk_ack.rcv_mss = hint;
 }
 EXPORT_SYMBOL(tcp_initialize_rcv_mss);
-
-#ifdef CONFIG_NETPM
-static void netpm_net_status_estimator(struct tcp_sock *tp)
-{
-	u32 netpm_rttdiff = 0;
-	int rtt_min_ms;
-
-	if (tp->netpm_rtt_min > tp->rcv_rtt_est.rtt) {
-		tp->netpm_rtt_min = tp->rcv_rtt_est.rtt;
-		rtt_min_ms = jiffies_to_msecs(tp->netpm_rtt_min >> 3);
-		netpm_debug("%s rtt_min_ms = %d\n", __func__, rtt_min_ms);
-	}
-
-	if (tp->netpm_srtt != 0) {
-		tp->netpm_srtt -= netpm_rtt_avg(tp);
-		tp->netpm_srtt += tp->rcv_rtt_est.rtt;
-
-		if (tp->rcv_rtt_est.rtt >= netpm_rtt_avg(tp))
-			netpm_rttdiff = tp->rcv_rtt_est.rtt - netpm_rtt_avg(tp);
-		else
-			netpm_rttdiff = netpm_rtt_avg(tp) - tp->rcv_rtt_est.rtt;
-	} else {
-		tp->netpm_srtt = tp->rcv_rtt_est.rtt << NETPM_DEF_SRTT_SCALE;
-	}
-
-	if (tp->netpm_rttvar != 0) {
-		tp->netpm_rttvar -= netpm_rttvar_avg(tp);
-		tp->netpm_rttvar += netpm_rttdiff;
-	} else {
-		tp->netpm_rttvar = (tp->rcv_rtt_est.rtt << (NETPM_DEF_SRTT_SCALE - 1)) / 2;
-	}
-
-	netpm_debug("%s tp->rcv_rtt_est.rtt = %u\n", __func__, tp->rcv_rtt_est.rtt);
-	netpm_debug("%s tp->rtt_min = %u\n", __func__, tp->netpm_rtt_min);
-	netpm_debug("%s tp->netpm_srtt = %u\n", __func__, netpm_rtt_avg(tp));
-	netpm_debug("%s tp->netpm_rttvar = %u\n", __func__, netpm_rttvar_avg(tp));
-}
-#endif
 
 /* Receiver "autotuning" code.
  *
@@ -758,11 +559,6 @@ static void tcp_rcv_rtt_update(struct tcp_sock *tp, u32 sample, int win_dep)
 
 	if (tp->rcv_rtt_est.rtt != new_sample)
 		tp->rcv_rtt_est.rtt = new_sample;
-
-#ifdef CONFIG_NETPM
-	if (netpm(tp))
-		netpm_net_status_estimator(tp);
-#endif
 }
 
 static inline void tcp_rcv_rtt_measure(struct tcp_sock *tp)
@@ -788,155 +584,6 @@ static inline void tcp_rcv_rtt_measure_ts(struct sock *sk,
 		tcp_rcv_rtt_update(tp, tcp_time_stamp - tp->rx_opt.rcv_tsecr, 0);
 }
 
-#ifdef CONFIG_NETPM
-static int netpm_int_log2(u32 v)
-{
-	u32 r, t, tt;
-
-	tt = v >> 16;
-	if (tt)
-		r = ((t = tt >> 8) ? 24 + NetpmLogTable[t] : 16 + NetpmLogTable[tt]);
-	else
-		r = ((t = v >> 8) ? 8 + NetpmLogTable[t] : NetpmLogTable[v]);
-
-	return r;
-}
-
-static int netpm_pow(int base, int n)
-{
-	int result = 1, i;
-
-	for (i = 0; i < n; i++)
-		result *= base;
-
-	return result;
-}
-
-/* RWNDmax = a * log(TPaccess,max * RTTmin - b) */
-#define NETPM_RWND_CAL(rtt)	\
-		(NETPM_DEF_PA * \
-		(netpm_int_log2(tp->netpm_max_tput * rtt * 125) \
-		 - NETPM_DEF_PB))
-
-static int netpm_piecelinear_logbdp(struct tcp_sock *tp)
-{
-	int rtt_min_ms, intlog_lower, intlog_upper, s, i, delta;
-	u32 rtt_low, rtt_high;
-
-	rtt_min_ms = jiffies_to_msecs(tp->netpm_rtt_min >> 3);
-	s = 0;
-	i = 0;
-	while (s < rtt_min_ms) {
-		i++;
-		s = 7 * netpm_pow(2, i);
-	}
-
-	rtt_high = s;
-	rtt_low = 7 * netpm_pow(2, i - 1);
-
-	tp->netpm_max_tput = sysctl_tcp_netpm[3];
-
-	intlog_lower = NETPM_RWND_CAL(rtt_low);
-	intlog_upper = NETPM_RWND_CAL(rtt_high);
-
-	if (intlog_lower < 0)
-		return 0;
-
-	delta = (rtt_min_ms - rtt_low) * (intlog_upper - intlog_lower)
-		/ (rtt_high - rtt_low);
-
-	return intlog_lower + delta;
-}
-
-static inline void netpm_increase_rwnd_max(struct tcp_sock *tp)
-{
-	tp->netpm_tcp_rmem_max = tp->netpm_tcp_rmem_max * 11 / 10;
-}
-
-static inline void netpm_decrease_rwnd_max(struct tcp_sock *tp)
-{
-	tp->netpm_tcp_rmem_max = tp->netpm_tcp_rmem_max * 8 / 10;
-}
-
-static void netpm_rwnd_max_adjustment(struct tcp_sock *tp)
-{
-	int rtt_min_ms, srtt_ms, rtt_var_ms;
-
-	rtt_min_ms = jiffies_to_msecs(tp->netpm_rtt_min >> 3);
-	srtt_ms = jiffies_to_msecs(netpm_rtt_avg(tp) >> 3);
-	rtt_var_ms = jiffies_to_msecs(netpm_rttvar_avg(tp) >> 3);
-
-	if (tp->netpm_srtt && tp->netpm_rtt_min != NETPM_RTT_MIN_INITIAL_VAL) {
-		/* initial RWND max estimation */
-		tp->netpm_rmem_max_curbdp[1] = tp->netpm_rmem_max_curbdp[0];
-		if (rtt_min_ms <= NETPM_DEF_MP)
-			tp->netpm_rmem_max_curbdp[0] = sysctl_tcp_netpm[3] * rtt_min_ms * NETPM_DEF_GAIN;
-		else
-			tp->netpm_rmem_max_curbdp[0] = netpm_piecelinear_logbdp(tp);
-
-		if (tp->netpm_rmem_max_curbdp[0] != tp->netpm_rmem_max_curbdp[1])
-			tp->netpm_rwnd_max_adjust = 0;
-
-		netpm_debug("%s saddr/sport = %08X/%d\n", __func__,
-			    ntohl(tp->inet_conn.icsk_inet.inet_saddr),
-			    ntohs(tp->inet_conn.icsk_inet.inet_sport));
-		netpm_debug("%s daddr/dport = %08X/%d\n", __func__,
-			    ntohl(tp->inet_conn.icsk_inet.inet_daddr),
-			    ntohs(tp->inet_conn.icsk_inet.inet_dport));
-		netpm_debug("%s sysctl_tcp_netpm[3] = %d, netpm_max_tput = %d, rtt_min_ms = %d\n",
-			    __func__, sysctl_tcp_netpm[3], tp->netpm_max_tput, rtt_min_ms);
-
-		tp->netpm_tcp_rmem_max_base = tcp_space_from_win(tp->netpm_rmem_max_curbdp[0]);
-
-		netpm_debug("%s calculated netpm_tcp_rmem_max_base = %d\n",
-			    __func__, tp->netpm_tcp_rmem_max_base);
-
-		if (tp->netpm_tcp_rmem_max_base > NETPM_DEF_UB)
-			tp->netpm_tcp_rmem_max_base = NETPM_DEF_UB;
-		else if (tp->netpm_tcp_rmem_max_base < NETPM_DEF_LB)
-			tp->netpm_tcp_rmem_max_base = NETPM_DEF_LB;
-
-		if (tp->netpm_rwnd_max_adjust == 0)
-			tp->netpm_tcp_rmem_max = tp->netpm_tcp_rmem_max_base;
-	}
-
-	/* Dynamic RWND increase */
-	if (NETPM_DEF_INC && tp->netpm_rtt_min != NETPM_RTT_MIN_INITIAL_VAL &&
-	    tp->netpm_cwnd_est > tcp_win_from_space(tp->netpm_tcp_rmem_max) - 100 * tp->advmss &&
-	    srtt_ms - rtt_min_ms < NETPM_DEF_INC_TH * rtt_var_ms) {
-		/* increasing size calculation */
-		netpm_increase_rwnd_max(tp);
-
-		if (tp->netpm_tcp_rmem_max > NETPM_DEF_UB)
-			tp->netpm_tcp_rmem_max = NETPM_DEF_UB;
-
-		tp->netpm_rwnd_max_adjust = 1;
-
-		netpm_debug("%s netpm_tcp_rmem_max increased = %d, netpm_cwnd_est = %d\n",
-			    __func__, tp->netpm_tcp_rmem_max, tp->netpm_cwnd_est);
-	} else if (NETPM_DEF_DEC &&
-		   tp->netpm_rwnd_max_adjust == 0 &&
-		   tp->netpm_rtt_min != NETPM_RTT_MIN_INITIAL_VAL &&
-		   srtt_ms - rtt_min_ms > NETPM_DEF_DEC_TH * rtt_var_ms) {
-		/* decreasing size calculation */
-		netpm_decrease_rwnd_max(tp);
-
-		if (tp->netpm_tcp_rmem_max < NETPM_DEF_LB)
-			tp->netpm_tcp_rmem_max = NETPM_DEF_LB;
-
-		tp->netpm_rwnd_max_adjust = 1;
-
-		netpm_debug("%s netpm_tcp_rmem_max decreased = %d\n",
-			    __func__, tp->netpm_tcp_rmem_max);
-	}
-
-	netpm_debug("%s filtered netpm_tcp_rmem_max_base = %d\n", __func__,
-		    tp->netpm_tcp_rmem_max_base);
-	netpm_debug("%s netpm_tcp_rmem_max = %d\n", __func__,
-		    tp->netpm_tcp_rmem_max);
-}
-#endif
-
 /*
  * This function should be called every time data is copied to user space.
  * It calculates the appropriate TCP receive buffer space.
@@ -953,26 +600,8 @@ void tcp_rcv_space_adjust(struct sock *sk)
 
 	/* Number of bytes copied to user in last RTT */
 	copied = tp->copied_seq - tp->rcvq_space.seq;
-#ifdef CONFIG_NETPM
-	if (netpm(tp)) {
-		if (tp->netpm_cwnd_est == 0)
-			tp->netpm_cwnd_est = copied;
-		else
-			tp->netpm_cwnd_est = (7 * tp->netpm_cwnd_est + copied) / 8;
-
-		netpm_debug("%s cwnd_est = %d\n", __func__,
-			    tp->netpm_cwnd_est);
-
-		if (copied <= tp->rcvq_space.space &&
-		    tp->netpm_max_tput == sysctl_tcp_netpm[3])
-			goto new_measure;
-	} else {
-#endif
-		if (copied <= tp->rcvq_space.space)
-			goto new_measure;
-#ifdef CONFIG_NETPM
-	}
-#endif
+	if (copied <= tp->rcvq_space.space)
+		goto new_measure;
 
 	/* A bit of theory :
 	 * copied = bytes received in previous RTT, our base window
@@ -1011,36 +640,14 @@ void tcp_rcv_space_adjust(struct sock *sk)
 		while (tcp_win_from_space(rcvmem) < tp->advmss)
 			rcvmem += 128;
 
-#ifdef CONFIG_NETPM
-		if (netpm(tp)) {
-			netpm_rwnd_max_adjustment(tp);
-			rcvbuf = min(rcvwin / tp->advmss * rcvmem, netpm_rmem_max(tp));
-			if (!tp->netpm_rbuf_flag && rcvbuf >= sysctl_tcp_rmem[1]) {
-				pr_info("<netpm> %s rtt_min_ms = %d\n", __func__,
-					jiffies_to_msecs(tp->netpm_rtt_min >> 3));
-				tp->netpm_rbuf_flag = 1;
-			}
-		} else {
-#endif
 		do_div(rcvwin, tp->advmss);
 		rcvbuf = min_t(u64, rcvwin * rcvmem, sysctl_tcp_rmem[2]);
-#ifdef CONFIG_NETPM
-		}
-		netpm_debug("%s final rcvbuf %d\n", __func__, rcvbuf);
-#endif
 		if (rcvbuf > sk->sk_rcvbuf) {
 			sk->sk_rcvbuf = rcvbuf;
 
 			/* Make the window clamp follow along.  */
 			tp->window_clamp = tcp_win_from_space(rcvbuf);
 		}
-#ifdef CONFIG_NETPM
-		else if (netpm(tp) && netpm_rmem_max(tp) < sk->sk_rcvbuf) {
-			sk->sk_rcvbuf = netpm_rmem_max(tp);
-
-			tp->window_clamp = sk->sk_rcvbuf / rcvmem * tp->advmss;
-		}
-#endif
 	}
 	tp->rcvq_space.space = copied;
 
@@ -2485,29 +2092,6 @@ static inline int tcp_dupack_heuristics(const struct tcp_sock *tp)
 	return tcp_is_fack(tp) ? tp->fackets_out : tp->sacked_out + 1;
 }
 
-static bool tcp_pause_early_retransmit(struct sock *sk, int flag)
-{
-	struct tcp_sock *tp = tcp_sk(sk);
-	unsigned long delay;
-
-	/* Delay early retransmit and entering fast recovery for
-	 * max(RTT/4, 2msec) unless ack has ECE mark, no RTT samples
-	 * available, or RTO is scheduled to fire first.
-	 */
-	if (sysctl_tcp_early_retrans < 2 || sysctl_tcp_early_retrans > 3 ||
-	    (flag & FLAG_ECE) || !tp->srtt_us)
-		return false;
-
-	delay = max(usecs_to_jiffies(tp->srtt_us >> 5),
-		    msecs_to_jiffies(2));
-
-	if (!time_after(inet_csk(sk)->icsk_timeout, (jiffies + delay)))
-		return false;
-
-	inet_csk_reset_xmit_timer(sk, ICSK_TIME_EARLY_RETRANS, delay,
-				  TCP_RTO_MAX);
-	return true;
-}
 
 /* Linux NewReno/SACK/FACK/ECN state machine.
  * --------------------------------------
@@ -2605,8 +2189,6 @@ static bool tcp_pause_early_retransmit(struct sock *sk, int flag)
 static bool tcp_time_to_recover(struct sock *sk, int flag)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
-	__u32 packets_out;
-	int tcp_reordering = sock_net(sk)->ipv4.sysctl_tcp_reordering;
 
 	/* Trick#1: The loss is proven. */
 	if (tp->lost_out)
@@ -2615,39 +2197,6 @@ static bool tcp_time_to_recover(struct sock *sk, int flag)
 	/* Not-A-Trick#2 : Classic rule... */
 	if (tcp_dupack_heuristics(tp) > tp->reordering)
 		return true;
-
-	/* Trick#4: It is still not OK... But will it be useful to delay
-	 * recovery more?
-	 */
-	packets_out = tp->packets_out;
-	if (packets_out <= tp->reordering &&
-	    tp->sacked_out >= max_t(__u32, packets_out/2, tcp_reordering) &&
-	    !tcp_may_send_now(sk)) {
-		/* We have nothing to send. This connection is limited
-		 * either by receiver window or by application.
-		 */
-		return true;
-	}
-
-	/* If a thin stream is detected, retransmit after first
-	 * received dupack. Employ only if SACK is supported in order
-	 * to avoid possible corner-case series of spurious retransmissions
-	 * Use only if there are no unsent data.
-	 */
-	if ((tp->thin_dupack || sysctl_tcp_thin_dupack) &&
-	    tcp_stream_is_thin(tp) && tcp_dupack_heuristics(tp) > 1 &&
-	    tcp_is_sack(tp) && !tcp_send_head(sk))
-		return true;
-
-	/* Trick#6: TCP early retransmit, per RFC5827.  To avoid spurious
-	 * retransmissions due to small network reorderings, we implement
-	 * Mitigation A.3 in the RFC and delay the retransmission for a short
-	 * interval if appropriate.
-	 */
-	if (tp->do_early_retrans && !tp->retrans_out && tp->sacked_out &&
-	    (tp->packets_out >= (tp->sacked_out + 1) && tp->packets_out < 4) &&
-	    !tcp_may_send_now(sk))
-		return !tcp_pause_early_retransmit(sk, flag);
 
 	return false;
 }
@@ -3098,7 +2647,6 @@ void tcp_simple_retransmit(struct sock *sk)
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
 	unsigned int mss = tcp_current_mss(sk);
-	u32 prior_lost = tp->lost_out;
 
 	tcp_for_write_queue(skb, sk) {
 		if (skb == tcp_send_head(sk))
@@ -3115,7 +2663,7 @@ void tcp_simple_retransmit(struct sock *sk)
 
 	tcp_clear_retrans_hints_partial(tp);
 
-	if (prior_lost == tp->lost_out)
+	if (!tp->lost_out)
 		return;
 
 	if (tcp_is_reno(tp))
@@ -6082,13 +5630,8 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 		icsk->icsk_af_ops->sk_rx_dst_set(sk, skb);
 		security_inet_conn_established(sk, skb);
 	}
-
-	/* Make sure socket is routed, for correct metrics.  */
-	icsk->icsk_af_ops->rebuild_header(sk);
-
-	tcp_init_metrics(sk);
-
-	tcp_init_congestion_control(sk);
+	
+	tcp_init_transfer(sk, BPF_SOCK_OPS_ACTIVE_ESTABLISHED_CB);
 
 	/* Prevent spurious tcp_cwnd_restart() on first data
 	 * packet.
@@ -6491,11 +6034,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 			inet_csk(sk)->icsk_retransmits = 0;
 			reqsk_fastopen_remove(sk, req, false);
 		} else {
-			/* Make sure socket is routed, for correct metrics. */
-			icsk->icsk_af_ops->rebuild_header(sk);
-			tcp_init_congestion_control(sk);
-
-			tcp_mtup_init(sk);
+		    tcp_init_transfer(sk, BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB);
 			tp->copied_seq = tp->rcv_nxt;
 			tcp_init_buffer_space(sk);
 		}
@@ -6702,7 +6241,8 @@ static void tcp_ecn_create_request(struct request_sock *req,
 	ecn_ok = net->ipv4.sysctl_tcp_ecn || ecn_ok_dst;
 
 	if ((!ect && ecn_ok) || tcp_ca_needs_ecn(listen_sk) ||
-	    (ecn_ok_dst & DST_FEATURE_ECN_CA))
+	    (ecn_ok_dst & DST_FEATURE_ECN_CA) ||
+	    tcp_bpf_ca_needs_ecn((struct sock *)req))
 		inet_rsk(req)->ecn_ok = 1;
 }
 
@@ -6941,10 +6481,10 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	} else {
 		tcp_rsk(req)->tfo_listener = false;
 		if (!want_cookie)
-			inet_csk_reqsk_queue_hash_add(sk, req, TCP_TIMEOUT_INIT);
-		af_ops->send_synack(sk, dst, &fl, req, &foc,
-				    !want_cookie ? TCP_SYNACK_NORMAL :
-						   TCP_SYNACK_COOKIE);
+			inet_csk_reqsk_queue_hash_add(sk, req,
+				tcp_timeout_init((struct sock *)req));
+		af_ops->send_synack(sk, dst, &fl, req,
+				    &foc, !want_cookie);
 		if (want_cookie) {
 			reqsk_free(req);
 			return 0;
