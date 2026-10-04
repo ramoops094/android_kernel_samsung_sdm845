@@ -1,1 +1,0 @@
-cmd_arch/arm64/crypto/sha1-ce.o := /serverhive/purple/los/prebuilts/clang/host/linux-x86/clang-r510928/bin/ld.lld -EL  -maarch64elf  -r -o arch/arm64/crypto/sha1-ce.o arch/arm64/crypto/sha1-ce-glue.o arch/arm64/crypto/sha1-ce-core.o 
