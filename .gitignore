@@ -3,3 +3,4 @@ toolchain/*
 
 # out Folder
 out/*
+/bout/
