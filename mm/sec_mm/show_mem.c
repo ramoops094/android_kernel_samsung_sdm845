@@ -130,7 +130,7 @@ void mm_debug_dump_tasks(void)
 	}
 	rcu_read_unlock();
 	if (heaviest_rss_sum)
-		pr_info("heaviest_task_rss:%s(%d) size:%luKB, totalram_pages:%luKB\n",
+		pr_info("heaviest_task_rss:%s(%d) size:%luKB, totalram_pages():%luKB\n",
 			heaviest_comm, heaviest_pid, K(heaviest_rss_sum),
 			K((unsigned long)totalram_pages()));
 }

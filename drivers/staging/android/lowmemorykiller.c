@@ -241,7 +241,7 @@ static void show_memory(void)
 
 #define K(x) ((x) << (PAGE_SHIFT - 10))
 	printk("Mem-Info:"
-		" totalram_pages:%lukB"
+		" totalram_pages():%lukB"
 		" free:%lukB"
 		" active_anon:%lukB"
 		" inactive_anon:%lukB"
@@ -264,7 +264,7 @@ static void show_memory(void)
 		" rbin_alloc:%lukB"
 		" rbin_file:%lukB"
 		"\n",
-		K(totalram_pages),
+		K(totalram_pages()),
 		K(global_page_state(NR_FREE_PAGES)),
 		K(global_node_page_state(NR_ACTIVE_ANON)),
 		K(global_node_page_state(NR_INACTIVE_ANON)),

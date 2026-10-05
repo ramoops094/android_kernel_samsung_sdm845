@@ -622,10 +622,10 @@ static struct ion_handle *__ion_alloc(
 	if (!len)
 		return ERR_PTR(-EINVAL);
 
-	if (len / PAGE_SIZE > totalram_pages / 4) {
+	if (len / PAGE_SIZE > totalram_pages() / 4) {
 		size_t pid_total_size = ion_buffer_get_total_size_by_pid(client);
 
-		if ((len + pid_total_size) / PAGE_SIZE > totalram_pages / 2) {
+		if ((len + pid_total_size) / PAGE_SIZE > totalram_pages() / 2) {
 			pr_err("%s: len %zu total %zu heap_id_mask %u flags %x\n",
 			       __func__, len, pid_total_size, heap_id_mask, flags);
 			return ERR_PTR(-EINVAL);
