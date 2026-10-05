@@ -276,14 +276,21 @@ static int tcp_write_timeout(struct sock *sk)
 			if (tcp_out_of_resources(sk, do_reset))
 				return 1;
 		}
+		expired = retransmits_timed_out(sk, retry_until,
+						icsk->icsk_user_timeout);
 	}
 
-	if (retransmits_timed_out(sk, retry_until,
-				  syn_set ? 0 : icsk->icsk_user_timeout, syn_set)) {
+	if (BPF_SOCK_OPS_TEST_FLAG(tp, BPF_SOCK_OPS_RTO_CB_FLAG))
+		tcp_call_bpf_3arg(sk, BPF_SOCK_OPS_RTO_CB,
+				  icsk->icsk_retransmits,
+				  icsk->icsk_rto, (int)expired);
+
+	if (expired) {
 		/* Has it gone just too far? */
 		tcp_write_err(sk);
 		return 1;
 	}
+
 	return 0;
 }
 
@@ -755,4 +762,7 @@ void tcp_init_xmit_timers(struct sock *sk)
 {
 	inet_csk_init_xmit_timers(sk, &tcp_write_timer, &tcp_delack_timer,
 				  &tcp_keepalive_timer);
+	hrtimer_init(&tcp_sk(sk)->pacing_timer, CLOCK_MONOTONIC,
+		     HRTIMER_MODE_ABS_PINNED);
+	tcp_sk(sk)->pacing_timer.function = tcp_pace_kick;
 }
