@@ -43,24 +43,6 @@ static inline void set_max_mapnr(unsigned long limit)
 static inline void set_max_mapnr(unsigned long limit) { }
 #endif
 
-
-enum memsize_kernel_type {
-	MEMSIZE_KERNEL_KERNEL = 0,
-	MEMSIZE_KERNEL_PAGING,
-	MEMSIZE_KERNEL_LOGBUF,
-	MEMSIZE_KERNEL_PIDHASH,
-	MEMSIZE_KERNEL_VFSHASH,
-	MEMSIZE_KERNEL_MM_INIT,
-	MEMSIZE_KERNEL_OTHERS,
-	MEMSIZE_KERNEL_STOP,
-};
-extern void set_memsize_reserved_name(const char *name);
-extern void unset_memsize_reserved_name(void);
-extern void set_memsize_kernel_type(enum memsize_kernel_type type);
-extern void free_memsize_reserved(phys_addr_t free_base, phys_addr_t free_size);
-extern void record_memsize_reserved(const char *name, phys_addr_t base,
-				    phys_addr_t size, bool nomap,
-
 extern atomic_long_t _totalram_pages;
 static inline unsigned long totalram_pages(void)
 {
@@ -86,7 +68,6 @@ static inline void totalram_pages_set(long val)
 {
 	atomic_long_set(&_totalram_pages, val);
 }
-
 extern void * high_memory;
 extern int page_cluster;
 
@@ -230,7 +211,7 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_NORESERVE	0x00200000	/* should the VM suppress accounting */
 #define VM_HUGETLB	0x00400000	/* Huge TLB Page VM */
 #define VM_ARCH_1	0x01000000	/* Architecture-specific flag */
-#define VM_WIPEONFORK	0x02000000	/* Wipe VMA contents in child. */
+#define VM_ARCH_2	0x02000000
 #define VM_DONTDUMP	0x04000000	/* Do not include in the core dump */
 
 #ifdef CONFIG_MEM_SOFT_DIRTY
@@ -545,16 +526,16 @@ unsigned long vmalloc_to_pfn(const void *addr);
  * On nommu, vmalloc/vfree wrap through kmalloc/kfree directly, so there
  * is no special casing required.
  */
-static inline bool is_vmalloc_addr(const void *x)
-{
-#ifdef CONFIG_MMU
-	unsigned long addr = (unsigned long)x;
 
-	return addr >= VMALLOC_START && addr < VMALLOC_END;
+#ifdef CONFIG_MMU
+extern int is_vmalloc_addr(const void *x);
 #else
-	return false;
-#endif
+static inline int is_vmalloc_addr(const void *x)
+{
+	return 0;
 }
+#endif
+
 #ifdef CONFIG_MMU
 extern int is_vmalloc_or_module_addr(const void *x);
 #else
@@ -576,6 +557,14 @@ static inline void *kvzalloc_node(size_t size, gfp_t flags, int node)
 static inline void *kvzalloc(size_t size, gfp_t flags)
 {
 	return kvmalloc(size, flags | __GFP_ZERO);
+}
+
+static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
+{
+	if (size != 0 && n > SIZE_MAX / size)
+		return NULL;
+
+	return kvmalloc(n * size, flags);
 }
 
 extern void kvfree(const void *addr);
@@ -2133,6 +2122,14 @@ extern int min_free_kbytes;
 extern int watermark_scale_factor;
 extern int extra_free_kbytes;
 
+/* vmscan.c */
+bool is_mem_boost_high(void);
+extern void reclaim_contig_migrate_range(unsigned long start,
+					 unsigned long end, bool drain);
+/* ion_rbin_heap.c */
+void wake_ion_rbin_heap_prereclaim(void);
+void wake_ion_rbin_heap_shrink(void);
+
 /* nommu.c */
 extern atomic_long_t mmap_pages_allocated;
 extern int nommu_shrink_inode_mappings(struct inode *, size_t, size_t);
@@ -2243,8 +2240,6 @@ extern struct vm_area_struct *_install_special_mapping(struct mm_struct *mm,
 extern int install_special_mapping(struct mm_struct *mm,
 				   unsigned long addr, unsigned long len,
 				   unsigned long flags, struct page **pages);
-
-unsigned long randomize_page(unsigned long start, unsigned long range);
 
 extern unsigned long get_unmapped_area(struct file *, unsigned long, unsigned long, unsigned long, unsigned long);
 
@@ -2485,6 +2480,7 @@ static inline struct page *follow_page(struct vm_area_struct *vma,
 #define FOLL_REMOTE	0x2000	/* we are working on non-current tsk/mm */
 #define FOLL_COW	0x4000	/* internal GUP flag */
 #define FOLL_ANON	0x8000	/* don't do file mappings */
+#define FOLL_CMA	0x80000	/* migrate if the page is from cma pageblock */
 
 typedef int (*pte_fn_t)(pte_t *pte, pgtable_t token, unsigned long addr,
 			void *data);
@@ -2719,5 +2715,22 @@ extern struct reclaim_param reclaim_task_anon(struct task_struct *task,
 		int nr_to_reclaim);
 #endif
 
+enum memsize_kernel_type {
+	MEMSIZE_KERNEL_KERNEL = 0,
+	MEMSIZE_KERNEL_PAGING,
+	MEMSIZE_KERNEL_LOGBUF,
+	MEMSIZE_KERNEL_PIDHASH,
+	MEMSIZE_KERNEL_VFSHASH,
+	MEMSIZE_KERNEL_MM_INIT,
+	MEMSIZE_KERNEL_OTHERS,
+	MEMSIZE_KERNEL_STOP,
+};
+extern void set_memsize_reserved_name(const char *name);
+extern void unset_memsize_reserved_name(void);
+extern void set_memsize_kernel_type(enum memsize_kernel_type type);
+extern void free_memsize_reserved(phys_addr_t free_base, phys_addr_t free_size);
+extern void record_memsize_reserved(const char *name, phys_addr_t base,
+				    phys_addr_t size, bool nomap,
+				    bool reusable);
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */
