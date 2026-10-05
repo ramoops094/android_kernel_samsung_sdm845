@@ -374,8 +374,7 @@ const struct bpf_func_proto bpf_get_current_ancestor_cgroup_id_proto = {
 	.arg1_type	= ARG_ANYTHING,
 };
 
-#ifdef CONFIG_CGROUP_BPF
-DECLARE_PER_CPU(void*, bpf_cgroup_storage[MAX_BPF_CGROUP_STORAGE_TYPE]);
+DECLARE_PER_CPU(void*, bpf_cgroup_storage);
 
 BPF_CALL_2(bpf_get_local_storage, struct bpf_map *, map, u64, flags)
 {
